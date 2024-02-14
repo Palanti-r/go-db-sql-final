@@ -3,11 +3,13 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	_ "github.com/stretchr/testify/require"
 )
@@ -16,6 +18,19 @@ var (
 	randSource = rand.NewSource(time.Now().UnixNano())
 	randRange  = rand.New(randSource)
 )
+var store ParcelStore
+
+func TestMain(m *testing.M) {
+	db, err := sql.Open("sqlite", "tracker.db")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	store = NewParcelStore(db)
+	runTests := m.Run()
+	os.Exit(runTests)
+}
 
 // getTestParcel возвращает тестовую посылку
 func getTestParcel() Parcel {
@@ -27,15 +42,15 @@ func getTestParcel() Parcel {
 	}
 }
 
-func connectDb(t *testing.T) (ParcelStore, Parcel) {
-	db, err := sql.Open("sqlite", "tracker.db")
-	require.NoError(t, err, "Ошибка подключения к БД")
-
-	store := NewParcelStore(db)
-	parcel := getTestParcel()
-
-	return store, parcel
-}
+//func connectDb(t *testing.T) (ParcelStore, Parcel) {
+//	db, err := sql.Open("sqlite", "tracker.db")
+//	require.NoError(t, err, "Ошибка подключения к БД")
+//
+//	store := NewParcelStore(db)
+//	parcel := getTestParcel()
+//
+//	return store, parcel
+//}
 
 func addParcel(t *testing.T, store ParcelStore, parcel Parcel) int {
 	number, err := store.Add(parcel)
@@ -45,24 +60,20 @@ func addParcel(t *testing.T, store ParcelStore, parcel Parcel) int {
 }
 
 func assertEqualParcels(t *testing.T, expected, actual Parcel) {
-	assert.Equal(t, expected.Client, actual.Client,
-		fmt.Sprintf("Возвращается неверный client для number=%d", actual.Number))
-	assert.Equal(t, expected.Status, actual.Status,
-		fmt.Sprintf("Возвращается неверный status для number=%d", actual.Number))
-	assert.Equal(t, expected.Address, actual.Address,
-		fmt.Sprintf("Возвращается неверный status для number=%d", actual.Number))
-	assert.Equal(t, expected.CreatedAt, actual.CreatedAt,
-		fmt.Sprintf("Возвращается неверный status для number=%d", actual.Number))
+	assert.Equal(t, expected, actual,
+		fmt.Sprintf("Возвращается неверный Parcel"))
 }
 
 // TestAddGetDelete проверяет добавление, получение и удаление посылки
 func TestAddGetDelete(t *testing.T) {
-	store, parcel := connectDb(t)
+	parcel := getTestParcel()
 	number := addParcel(t, store, parcel)
 
 	ans, err := store.Get(number)
 	require.NoError(t, err, "Ошибка при получении посылки")
 	assert.Equal(t, number, ans.Number, "Возвращается неверный number")
+
+	parcel.Number = number
 	assertEqualParcels(t, parcel, ans)
 
 	err = store.Delete(number)
@@ -73,7 +84,7 @@ func TestAddGetDelete(t *testing.T) {
 
 // TestSetAddress проверяет обновление адреса
 func TestSetAddress(t *testing.T) {
-	store, parcel := connectDb(t)
+	parcel := getTestParcel()
 	number := addParcel(t, store, parcel)
 
 	newAddress := "new test address"
@@ -82,12 +93,12 @@ func TestSetAddress(t *testing.T) {
 
 	ans, err := store.Get(number)
 	require.NoError(t, err, "Ошибка при получении посылки с обновленным адресом")
-	require.Equal(t, ans.Address, newAddress, "Полученный адрес не совпадает с ожидаемым")
+	require.Equal(t, newAddress, ans.Address, "Полученный адрес не совпадает с ожидаемым")
 }
 
 // TestSetStatus проверяет обновление статуса
 func TestSetStatus(t *testing.T) {
-	store, parcel := connectDb(t)
+	parcel := getTestParcel()
 	number := addParcel(t, store, parcel)
 
 	err := store.SetStatus(number, ParcelStatusSent)
@@ -100,8 +111,6 @@ func TestSetStatus(t *testing.T) {
 
 // TestGetByClient проверяет получение посылок по идентификатору клиента
 func TestGetByClient(t *testing.T) {
-	store, _ := connectDb(t)
-
 	parcels := []Parcel{
 		getTestParcel(),
 		getTestParcel(),
@@ -127,6 +136,6 @@ func TestGetByClient(t *testing.T) {
 	for _, storedParcel := range storedParcels {
 		parcel, ok := parcelMap[storedParcel.Number]
 		require.True(t, ok, fmt.Sprintf("Отсутствует посылка %d", storedParcel.Number))
-		assertEqualParcels(t, parcel, storedParcel)
+		assert.Equal(t, parcel, storedParcel)
 	}
 }
