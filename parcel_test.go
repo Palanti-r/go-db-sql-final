@@ -42,26 +42,11 @@ func getTestParcel() Parcel {
 	}
 }
 
-//func connectDb(t *testing.T) (ParcelStore, Parcel) {
-//	db, err := sql.Open("sqlite", "tracker.db")
-//	require.NoError(t, err, "Ошибка подключения к БД")
-//
-//	store := NewParcelStore(db)
-//	parcel := getTestParcel()
-//
-//	return store, parcel
-//}
-
 func addParcel(t *testing.T, store ParcelStore, parcel Parcel) int {
 	number, err := store.Add(parcel)
 	require.NoError(t, err, "Ошибка при добавлении посылки")
 	require.NotZero(t, number, "У добавленной посылки отсутствует идентификатор")
 	return number
-}
-
-func assertEqualParcels(t *testing.T, expected, actual Parcel) {
-	assert.Equal(t, expected, actual,
-		fmt.Sprintf("Возвращается неверный Parcel"))
 }
 
 // TestAddGetDelete проверяет добавление, получение и удаление посылки
@@ -74,7 +59,7 @@ func TestAddGetDelete(t *testing.T) {
 	assert.Equal(t, number, ans.Number, "Возвращается неверный number")
 
 	parcel.Number = number
-	assertEqualParcels(t, parcel, ans)
+	assert.Equal(t, parcel, ans)
 
 	err = store.Delete(number)
 	require.NoError(t, err, "Ошибка при удалении посылки")
