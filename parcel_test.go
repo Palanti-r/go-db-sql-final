@@ -2,21 +2,35 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	_ "github.com/stretchr/testify/require"
 )
 
 var (
-	// randSource источник псевдо случайных чисел.
-	// Для повышения уникальности в качестве seed
-	// используется текущее время в unix формате (в виде числа)
 	randSource = rand.NewSource(time.Now().UnixNano())
-	// randRange использует randSource для генерации случайных чисел
-	randRange = rand.New(randSource)
+	randRange  = rand.New(randSource)
 )
+var store ParcelStore
+
+func TestMain(m *testing.M) {
+	db, err := sql.Open("sqlite", "tracker.db")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	store = NewParcelStore(db)
+	runTests := m.Run()
+	os.Exit(runTests)
+}
 
 // getTestParcel возвращает тестовую посылку
 func getTestParcel() Parcel {
@@ -28,61 +42,60 @@ func getTestParcel() Parcel {
 	}
 }
 
+func addParcel(t *testing.T, store ParcelStore, parcel Parcel) int {
+	number, err := store.Add(parcel)
+	require.NoError(t, err, "Ошибка при добавлении посылки")
+	require.NotZero(t, number, "У добавленной посылки отсутствует идентификатор")
+	return number
+}
+
 // TestAddGetDelete проверяет добавление, получение и удаление посылки
 func TestAddGetDelete(t *testing.T) {
-	// prepare
-	db, err := // настройте подключение к БД
-	store := NewParcelStore(db)
 	parcel := getTestParcel()
+	number := addParcel(t, store, parcel)
 
-	// add
-	// добавьте новую посылку в БД, убедитесь в отсутствии ошибки и наличии идентификатора
+	ans, err := store.Get(number)
+	require.NoError(t, err, "Ошибка при получении посылки")
+	assert.Equal(t, number, ans.Number, "Возвращается неверный number")
 
-	// get
-	// получите только что добавленную посылку, убедитесь в отсутствии ошибки
-	// проверьте, что значения всех полей в полученном объекте совпадают со значениями полей в переменной parcel
+	parcel.Number = number
+	assert.Equal(t, parcel, ans)
 
-	// delete
-	// удалите добавленную посылку, убедитесь в отсутствии ошибки
-	// проверьте, что посылку больше нельзя получить из БД
+	err = store.Delete(number)
+	require.NoError(t, err, "Ошибка при удалении посылки")
+	ans, err = store.Get(number)
+	require.ErrorIs(t, err, sql.ErrNoRows, "Неверная ошибка при получении удаленной посылки")
 }
 
 // TestSetAddress проверяет обновление адреса
 func TestSetAddress(t *testing.T) {
-	// prepare
-	db, err := // настройте подключение к БД
+	parcel := getTestParcel()
+	number := addParcel(t, store, parcel)
 
-	// add
-	// добавьте новую посылку в БД, убедитесь в отсутствии ошибки и наличии идентификатора
-
-	// set address
-	// обновите адрес, убедитесь в отсутствии ошибки
 	newAddress := "new test address"
+	err := store.SetAddress(number, newAddress)
+	require.NoError(t, err, "Ошибка при обновлении адреса")
 
-	// check
-	// получите добавленную посылку и убедитесь, что адрес обновился
+	ans, err := store.Get(number)
+	require.NoError(t, err, "Ошибка при получении посылки с обновленным адресом")
+	require.Equal(t, newAddress, ans.Address, "Полученный адрес не совпадает с ожидаемым")
 }
 
 // TestSetStatus проверяет обновление статуса
 func TestSetStatus(t *testing.T) {
-	// prepare
-	db, err := // настройте подключение к БД
+	parcel := getTestParcel()
+	number := addParcel(t, store, parcel)
 
-	// add
-	// добавьте новую посылку в БД, убедитесь в отсутствии ошибки и наличии идентификатора
+	err := store.SetStatus(number, ParcelStatusSent)
+	require.NoError(t, err, "Ошибка при обновлении статуса")
 
-	// set status
-	// обновите статус, убедитесь в отсутствии ошибки
-
-	// check
-	// получите добавленную посылку и убедитесь, что статус обновился
+	ans, err := store.Get(number)
+	require.NoError(t, err, "Ошибка при получении посылки с обновленным статусом")
+	require.Equal(t, ParcelStatusSent, ans.Status, "Полученный статус не совпадает с ожидаемым")
 }
 
 // TestGetByClient проверяет получение посылок по идентификатору клиента
 func TestGetByClient(t *testing.T) {
-	// prepare
-	db, err := // настройте подключение к БД
-
 	parcels := []Parcel{
 		getTestParcel(),
 		getTestParcel(),
@@ -90,32 +103,24 @@ func TestGetByClient(t *testing.T) {
 	}
 	parcelMap := map[int]Parcel{}
 
-	// задаём всем посылкам один и тот же идентификатор клиента
 	client := randRange.Intn(10_000_000)
 	parcels[0].Client = client
 	parcels[1].Client = client
 	parcels[2].Client = client
 
-	// add
-	for i := 0; i < len(parcels); i++ {
-		id, err := // добавьте новую посылку в БД, убедитесь в отсутствии ошибки и наличии идентификатора
-
-		// обновляем идентификатор добавленной у посылки
-		parcels[i].Number = id
-
-		// сохраняем добавленную посылку в структуру map, чтобы её можно было легко достать по идентификатору посылки
-		parcelMap[id] = parcels[i]
+	for _, p := range parcels {
+		p.Number = addParcel(t, store, p)
+		parcelMap[p.Number] = p
 	}
 
-	// get by client
-	storedParcels, err := // получите список посылок по идентификатору клиента, сохранённого в переменной client
-	// убедитесь в отсутствии ошибки
-	// убедитесь, что количество полученных посылок совпадает с количеством добавленных
+	storedParcels, err := store.GetByClient(client)
+	require.NoError(t, err, "Ошибка при получении посылок по клиенту")
+	require.Equal(t, len(parcels), len(storedParcels),
+		"Количество полученных посылок клиента не совпадает с ожидаемым")
 
-	// check
-	for _, parcel := range storedParcels {
-		// в parcelMap лежат добавленные посылки, ключ - идентификатор посылки, значение - сама посылка
-		// убедитесь, что все посылки из storedParcels есть в parcelMap
-		// убедитесь, что значения полей полученных посылок заполнены верно
+	for _, storedParcel := range storedParcels {
+		parcel, ok := parcelMap[storedParcel.Number]
+		require.True(t, ok, fmt.Sprintf("Отсутствует посылка %d", storedParcel.Number))
+		assert.Equal(t, parcel, storedParcel)
 	}
 }
